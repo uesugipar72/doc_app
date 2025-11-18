@@ -1,0 +1,12 @@
+.venv/
+済/
+# Python キャッシュファイル
+*.pyc
+__pycache__/
+# Excelファイルを無視
+*.xlsx
+*.xls
+# pdfファイルを無視
+*.pdf
+
+
