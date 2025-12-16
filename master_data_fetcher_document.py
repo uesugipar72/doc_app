@@ -71,22 +71,27 @@ class MasterDataFetcherDocument:
     # ------------------------------------------------------------
     # 条件検索
     # ------------------------------------------------------------
-    def fetch_by_conditions(self, table_name: str, conditions: Dict[str, Any]) -> List[Tuple[Any, ...]]:
-        """
-        条件付き検索
-        conditions = {"status": 1, "document_id": 10}
-        """
+    def fetch_by_conditions(self, table_name, conditions):
         try:
+            with self._connect() as cur:
+                cur.execute(f"PRAGMA table_info({table_name})")
+                columns = {row[1] for row in cur.fetchall()}
+
+            for key in conditions.keys():
+                if key not in columns:
+                    raise ValueError(f"カラム '{key}' は {table_name} に存在しません")
+
             where_clauses = [f"{col} = ?" for col in conditions.keys()]
             sql = f"SELECT * FROM {table_name} WHERE " + " AND ".join(where_clauses)
-            values = tuple(conditions.values())
 
             with self._connect() as cur:
-                cur.execute(sql, values)
+                cur.execute(sql, tuple(conditions.values()))
                 return cur.fetchall()
+
         except Exception as e:
             print(f"[fetch_by_conditions] エラー: {e}")
             return []
+
 
     # ------------------------------------------------------------
     # 1件取得（ID検索）
