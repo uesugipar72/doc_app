@@ -108,3 +108,57 @@ class MasterDataFetcherDocument:
         except Exception as e:
             print(f"[fetch_one] エラー: {e}")
             return None
+
+    def fetch_latest_documents(self):
+        """
+        最新版（edition_status = 0）を保証して取得
+        """
+        sql = """
+        SELECT
+            d.document_id,
+            d.document_number,
+            d.document_name,
+            e.edition_id,
+            e.edition_no,
+            e.effective_date,
+            e.edition_status
+        FROM Document_Master d
+        JOIN Document_Edition_Master e
+        ON d.document_id = e.document_id
+        WHERE e.edition_status = 0
+        ORDER BY d.document_number
+        """
+        try:
+            with self._connect() as cur:
+                cur.execute(sql)
+                return cur.fetchall()
+        except Exception as e:
+            print(f"[fetch_latest_documents] エラー: {e}")
+            return []
+
+    def fetch_editions_by_status(self, edition_status: int):
+        """
+        edition_status 指定で Edition 一覧取得
+        """
+        sql = """
+        SELECT
+            d.document_id,
+            d.document_number,
+            d.document_name,
+            e.edition_id,
+            e.edition_no,
+            e.effective_date,
+            e.edition_status
+        FROM Document_Master d
+        JOIN Document_Edition_Master e
+        ON d.document_id = e.document_id
+        WHERE e.edition_status = ?
+        ORDER BY d.document_number, e.edition_no
+        """
+        try:
+            with self._connect() as cur:
+                cur.execute(sql, (edition_status,))
+                return cur.fetchall()
+        except Exception as e:
+            print(f"[fetch_editions_by_status] エラー: {e}")
+            return []

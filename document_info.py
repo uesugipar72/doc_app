@@ -1,146 +1,201 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
-from master_data_fetcher_document import MasterDataFetcherDocument
+import sqlite3
+from contextlib import contextmanager
+from typing import List, Tuple, Dict, Any
 
 
-class LatestEditionListGUI(tk.Tk):
+class DocumentInfo:
     """
-    最新版（active document の最新版）を一覧表示する GUI
-    equipment_info の構成を参考にして作成
+    Document / Edition 情報を扱うデータアクセスクラス
+    ・最新版は edition_status = 0 で保証
+    ・JOIN による一覧取得を基本とする
     """
-    def __init__(self, db_name="document_master.db"):
-        super().__init__()
-        self.title("最新版ドキュメント一覧")
-        self.geometry("1100x650")
 
-        self.db = MasterDataFetcherDocument(db_name)
+    def __init__(self, db_path: str):
+        self.db_path = db_path
 
-        self._create_widgets()
-        self._load_latest_list()
+    # ------------------------------------------------------------------
+    # DB 接続（共通）
+    # ------------------------------------------------------------------
+    @contextmanager
+    def _connect(self):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
-    # ----------------------------------------------------------------------
-    # GUI 構築
-    # ----------------------------------------------------------------------
-    def _create_widgets(self):
+    def fetch_all_editions(self):
+        sql = """
+        SELECT
+            d.document_number,
+            d.document_name,
+            e.edition_no,
+            e.effective_date,
+            e.edition_status
+        FROM Document_Master d
+        JOIN Document_Edition_Master e
+        ON d.document_id = e.document_id
+        ORDER BY d.document_number, e.edition_no DESC
+        """
+        with self._connect() as conn:
+            return conn.execute(sql).fetchall()
 
-        # ---------- 検索条件フレーム ----------
-        cond_frame = tk.LabelFrame(self, text="検索条件", padx=10, pady=10)
-        cond_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        # 文書名 (部分一致)
-        tk.Label(cond_frame, text="文書名").grid(row=0, column=0, sticky="e")
-        self.entry_docname = tk.Entry(cond_frame, width=30)
-        self.entry_docname.grid(row=0, column=1, padx=5)
+    # ------------------------------------------------------------------
+    # ステータス変換
+    # ------------------------------------------------------------------
+    @staticmethod
+    def status_text(status_value: int) -> str:
+        return {
+            0: "最新",
+            1: "修正中",
+            9: "旧版/廃止"
+        }.get(status_value, "不明")
 
-        # ステータス
-        tk.Label(cond_frame, text="ステータス").grid(row=0, column=2, sticky="e")
-        self.combo_status = ttk.Combobox(
-            cond_frame, width=15, values=["active", "inactive", "all"], state="readonly")
-        self.combo_status.current(0)
-        self.combo_status.grid(row=0, column=3, padx=5)
+    # ------------------------------------------------------------------
+    # 最新版ドキュメント一覧（JOIN / 保証版）
+    # ------------------------------------------------------------------
+    def fetch_latest_documents(self) -> List[Tuple]:
+        """
+        最新版（edition_status = 0）のみ取得
+        """
+        sql = """
+        SELECT
+            d.document_id,
+            d.document_number,
+            d.document_name,
+            e.edition_id,
+            e.edition_no,
+            e.effective_date,
+            e.edition_status
+        FROM Document_Master d
+        JOIN Document_Edition_Master e
+          ON d.document_id = e.document_id
+        WHERE e.edition_status = 0
+        ORDER BY d.document_number
+        """
+        with self._connect() as conn:
+            return conn.execute(sql).fetchall()
 
-        # 検索ボタン
-        btn_search = tk.Button(cond_frame, text="検索", command=self._load_latest_list)
-        btn_search.grid(row=0, column=4, padx=10)
+    # ------------------------------------------------------------------
+    # Edition 状態別一覧（修正中・旧版など）
+    # ------------------------------------------------------------------
+    def fetch_editions_by_status(self, edition_status: int) -> List[Tuple]:
+        """
+        edition_status 指定で Edition 一覧取得
+        """
+        sql = """
+        SELECT
+            d.document_id,
+            d.document_number,
+            d.document_name,
+            e.edition_id,
+            e.edition_no,
+            e.effective_date,
+            e.edition_status
+        FROM Document_Master d
+        JOIN Document_Edition_Master e
+          ON d.document_id = e.document_id
+        WHERE e.edition_status = ?
+        ORDER BY d.document_number, e.edition_no
+        """
+        with self._connect() as conn:
+            return conn.execute(sql, (edition_status,)).fetchall()
 
-        # ---------- 一覧フレーム ----------
-        list_frame = tk.Frame(self)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    # ------------------------------------------------------------------
+    # 文書ID指定：全 Edition 取得（履歴用）
+    # ------------------------------------------------------------------
+    def fetch_editions_by_document(self, document_id: int) -> List[Tuple]:
+        sql = """
+        SELECT
+            edition_id,
+            edition_no,
+            edition_code,
+            effective_date,
+            edition_status
+        FROM Document_Edition_Master
+        WHERE document_id = ?
+        ORDER BY edition_no DESC
+        """
+        with self._connect() as conn:
+            return conn.execute(sql, (document_id,)).fetchall()
 
-        columns = [
-            "document_id", "document_name",
-            "edition_no", "edition_code",
-            "effective_date", "usege_status"
-        ]
-
-        self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=20)
-
-        for col in columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=150)
-
-        self.tree.pack(fill=tk.BOTH, expand=True)
-
-    # ----------------------------------------------------------------------
-    # 最新版一覧を取得して表示
-    # ----------------------------------------------------------------------
-    def _load_latest_list(self):
-
-        # 検索条件取得
-        name_keyword = self.entry_docname.get().strip()
-        status_filter = self.combo_status.get()
-
-        # 一覧クリア
-        for row in self.tree.get_children():
-            self.tree.delete(row)
-
-        # active documents を取得
-        doc_conditions = {}
-        if status_filter != "all":
-            if status_filter == "active":
-                doc_conditions["usege_status"] = 1
-            elif status_filter == "inactive":
-                doc_conditions["usege_status"] = 0
-
-        doc_rows = (
-            self.db.fetch_by_conditions("Document_Master", doc_conditions)
-            if doc_conditions
-            else self.db.fetch_all("Document_Master")
+    # ------------------------------------------------------------------
+    # 最新版切替（承認処理）
+    # ------------------------------------------------------------------
+    def approve_edition(self, document_id: int, edition_id: int):
+        """
+        修正中版を最新版に昇格
+        ・現在の最新版 → 旧版
+        ・指定 edition → 最新版
+        """
+        with self._connect() as conn:
+            # 現在の最新版を旧版へ
+            conn.execute(
+                """
+                UPDATE Document_Edition_Master
+                SET edition_status = 9
+                WHERE document_id = ?
+                  AND edition_status = 0
+                """,
+                (document_id,)
             )
 
-        # 文書名フィルタ（部分一致）
-        if name_keyword:
-            doc_rows = [r for r in doc_rows if name_keyword in str(r[2])]
-
-        for doc in doc_rows:
-            document_id = doc[0]
-            document_name = doc[2]
-
-            # 最新版取得
-            latest = self._fetch_latest_edition(document_id)
-            if latest is None:
-                continue
-
-            # edition_master のカラム指定例
-            edition_no = latest[2]
-            edition_code = latest[3]
-            effective_date = latest[6]
-            edition_status = latest[8]
-
-            # 一覧へ追加
-            usege_status_value = doc[8]  # ← usege_status のインデックス
-            usege_status_text = "active" if usege_status_value == 1 else "inactive"
-            self.tree.insert(
-                "", tk.END,
-                values=(
-                    document_id,
-                    document_name,
-                    edition_no,
-                    edition_code,
-                    effective_date,
-                    usege_status_text
-                )
+            # 指定版を最新版へ
+            conn.execute(
+                """
+                UPDATE Document_Edition_Master
+                SET edition_status = 0
+                WHERE edition_id = ?
+                """,
+                (edition_id,)
             )
 
-    # ----------------------------------------------------------------------
-    # 指定 document_id の最新版（edition_no 最大）を取得
-    # ----------------------------------------------------------------------
-    def _fetch_latest_edition(self, document_id):
-
-        rows = self.db.fetch_by_conditions(
-            "Document_Edition_Master",
-            {"document_id": document_id}
+    # ------------------------------------------------------------------
+    # 修正中版の新規登録
+    # ------------------------------------------------------------------
+    def create_draft_edition(
+        self,
+        document_id: int,
+        edition_no: int,
+        edition_code: str,
+        effective_date: str
+    ):
+        """
+        修正中版（edition_status=1）を追加
+        """
+        sql = """
+        INSERT INTO Document_Edition_Master
+        (
+            document_id,
+            edition_no,
+            edition_code,
+            effective_date,
+            edition_status
         )
+        VALUES (?, ?, ?, ?, 1)
+        """
+        with self._connect() as conn:
+            conn.execute(
+                sql,
+                (document_id, edition_no, edition_code, effective_date)
+            )
 
-        if not rows:
-            return None
-
-        # edition_no 最大のものが最新版
-        latest = max(rows, key=lambda r: r[2])
-
-        return latest
-
-
-if __name__ == "__main__":
-    app = LatestEditionListGUI(r"C:\DataBase\document_master.db")
-    app.mainloop()
+    # ------------------------------------------------------------------
+    # 文書マスタ取得（参照用）
+    # ------------------------------------------------------------------
+    def fetch_document_master(self) -> List[Tuple]:
+        sql = """
+        SELECT
+            document_id,
+            document_number,
+            document_name
+        FROM Document_Master
+        ORDER BY document_number
+        """
+        with self._connect() as conn:
+            return conn.execute(sql).fetchall()
