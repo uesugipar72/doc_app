@@ -65,11 +65,9 @@ class DocumentInfo:
         """
         sql = """
         SELECT
-            d.document_id,
             d.document_number,
             d.document_name,
-            e.edition_id,
-            e.edition_no,
+             e.edition_no,           
             e.effective_date,
             e.edition_status
         FROM Document_Master d
@@ -90,7 +88,6 @@ class DocumentInfo:
         """
         sql = """
         SELECT
-            d.document_id,
             d.document_number,
             d.document_name,
             e.edition_id,

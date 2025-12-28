@@ -98,11 +98,11 @@ class DocumentAllListGUI(tk.Tk):
 
         for r in rows:
             # fetch_latest_documents と fetch_all_editions の差を吸収
-            document_number = r[1]
-            document_name = r[2]
-            edition_no = r[3]
-            effective_date = r[4]
-            edition_status = r[5]
+            document_number = r[0]
+            document_name = r[1]
+            edition_no = r[2]
+            effective_date = r[3]
+            edition_status = r[4]
 
             status_text = self.db.status_text(edition_status)
 
