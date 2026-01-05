@@ -1,7 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
 from document_info import DocumentInfo
-
+import os
+import subprocess
+from tkinter import messagebox
 
 class DocumentAllListGUI(tk.Tk):
     """
@@ -79,6 +81,41 @@ class DocumentAllListGUI(tk.Tk):
         self.tree.tag_configure("editing", background="#FFFDE7")  # 薄黄
         self.tree.tag_configure("old", background="#F5F5F5")      # 薄灰
 
+    def _create_context_menu(self):
+        self.menu = tk.Menu(self, tearoff=0)
+        self.menu.add_command(label="文書を開く", command=self.open_document)
+        self.tree.bind("<Button-3>", self._show_context_menu)
+
+    def _show_context_menu(self, event):
+        row_id = self.tree.identify_row(event.y)
+        if row_id:
+            self.tree.selection_set(row_id)
+            self.menu.post(event.x_root, event.y_root)
+
+
+    def open_document(self, event=None):
+        selected = self.tree.selection()
+        if not selected:
+            return
+
+        item_id = selected[0]
+        values = self.tree.item(item_id, "values")
+
+        pdf_path = values[5]  # ← ★ 末尾に入れた PDF path
+
+        if not pdf_path or not os.path.exists(pdf_path):
+            messagebox.showerror(
+                "エラー",
+                f"ファイルが存在しません\n{pdf_path}"
+            )
+            return
+
+        try:
+            os.startfile(pdf_path)
+        except Exception as e:
+            messagebox.showerror("エラー", str(e))
+
+
     # --------------------------------------------------
     # 一覧ロード
     # --------------------------------------------------
@@ -103,6 +140,7 @@ class DocumentAllListGUI(tk.Tk):
             edition_no = r[2]
             effective_date = r[3]
             edition_status = r[4]
+            pdf_path = r[5]
 
             status_text = self.db.status_text(edition_status)
 
@@ -120,11 +158,12 @@ class DocumentAllListGUI(tk.Tk):
                     document_name,
                     edition_no,
                     effective_date,
-                    status_text
+                    status_text,
+                    pdf_path
                 ),
                 tags=(tag,)
             )
-
+    
 
 if __name__ == "__main__":
     app = DocumentAllListGUI(r"C:\DataBase\document_master.db")

@@ -67,9 +67,10 @@ class DocumentInfo:
         SELECT
             d.document_number,
             d.document_name,
-             e.edition_no,           
+            e.edition_no,           
             e.effective_date,
             e.edition_status
+            e.pdf_path
         FROM Document_Master d
         JOIN Document_Edition_Master e
           ON d.document_id = e.document_id
@@ -94,6 +95,7 @@ class DocumentInfo:
             e.edition_no,
             e.effective_date,
             e.edition_status
+            e.pdf_path
         FROM Document_Master d
         JOIN Document_Edition_Master e
           ON d.document_id = e.document_id
@@ -114,6 +116,7 @@ class DocumentInfo:
             edition_code,
             effective_date,
             edition_status
+            pdf_path
         FROM Document_Edition_Master
         WHERE document_id = ?
         ORDER BY edition_no DESC
