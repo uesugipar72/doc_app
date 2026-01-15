@@ -69,18 +69,7 @@ class DocumentInfo:
         ORDER BY d.document_number, e.edition_no
         """
         with self._connect() as conn:
-            return conn.execute(sql, (self.LATEST,)).fetchall()
-
-    # ------------------------------------------------------------------
-    # ステータス変換
-    # ------------------------------------------------------------------
-    @staticmethod
-    def status_text(status_value: int) -> str:
-        return {
-            0: "最新",
-            1: "修正中",
-            9: "旧版/廃止"
-        }.get(status_value, "不明")
+            return conn.execute(sql).fetchall()
 
     # ------------------------------------------------------------------
     # 最新版ドキュメント一覧（JOIN / 保証版）
@@ -121,7 +110,7 @@ class DocumentInfo:
         FROM Document_Edition_Master AS e
         JOIN Document_Master AS d
             ON e.document_id = d.document_id
-        WHERE e.edition_status = 0
+        WHERE e.edition_status = ?
         ORDER BY d.document_number, e.edition_no
         """
         with self._connect() as conn:
