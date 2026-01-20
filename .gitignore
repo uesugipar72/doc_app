@@ -8,5 +8,9 @@ __pycache__/
 *.xls
 # pdfファイルを無視
 *.pdf
+# Visual Studio
+.vs/
+*.slnx/
+doc_app.slnx/
 
 
