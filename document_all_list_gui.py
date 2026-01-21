@@ -26,6 +26,7 @@ class DocumentAllListGUI(tk.Tk):
         self.db = DocumentInfo(db_path)
 
         self._create_widgets()
+        self._create_context_menu()
         self._load_list()
 
     # --------------------------------------------------
@@ -53,7 +54,7 @@ class DocumentAllListGUI(tk.Tk):
         list_frame = tk.Frame(self)
         list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        columns = ("文書番号", "文書名", "版", "発行日", "状態")
+        columns = ("文書番号", "文書名", "版", "発行日", "状態", "PDFパス")
 
         self.tree = ttk.Treeview(
             list_frame,
@@ -67,12 +68,14 @@ class DocumentAllListGUI(tk.Tk):
             "文書名": 420,
             "版": 80,
             "発行日": 120,
-            "状態": 120
+            "状態": 120,
+            "PDFパス": 0
         }
 
         for col in columns:
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=widths[col], anchor="center")
+            self.tree.column("PDFパス", width=0, stretch=False)
+
 
         self.tree.pack(fill=tk.BOTH, expand=True)
 
@@ -84,7 +87,11 @@ class DocumentAllListGUI(tk.Tk):
     def _create_context_menu(self):
         self.menu = tk.Menu(self, tearoff=0)
         self.menu.add_command(label="文書を開く", command=self.open_document)
+        self.menu.add_separator()
+        self.menu.add_command(label="修正版を作成する", command=self.create_revision)
+
         self.tree.bind("<Button-3>", self._show_context_menu)
+
 
     def _show_context_menu(self, event):
         row_id = self.tree.identify_row(event.y)
@@ -92,28 +99,50 @@ class DocumentAllListGUI(tk.Tk):
             self.tree.selection_set(row_id)
             self.menu.post(event.x_root, event.y_root)
 
-
-    def open_document(self, event=None):
+    def open_document(self):
         selected = self.tree.selection()
         if not selected:
             return
 
-        item_id = selected[0]
-        values = self.tree.item(item_id, "values")
-
-        pdf_path = values[5]  # ← ★ 末尾に入れた PDF path
+        values = self.tree.item(selected[0], "values")
+        pdf_path = values[5]   # PDFパス列
 
         if not pdf_path or not os.path.exists(pdf_path):
-            messagebox.showerror(
-                "エラー",
-                f"ファイルが存在しません\n{pdf_path}"
-            )
+            messagebox.showerror("エラー", f"ファイルが存在しません\n{pdf_path}")
             return
 
         try:
             os.startfile(pdf_path)
         except Exception as e:
             messagebox.showerror("エラー", str(e))
+
+    def create_revision(self):
+        selected = self.tree.selection()
+        if not selected:
+            return
+
+        values = self.tree.item(selected[0], "values")
+
+        document_number = values[0]
+        edition_no = values[2]
+
+        answer = messagebox.askyesno(
+            "修正版作成",
+            f"文書番号：{document_number}\n"
+            f"現行版：{edition_no}\n\n"
+            "修正版を作成しますか？"
+        )
+
+        if not answer:
+            return
+
+        # ★ ここで DB に DRAFT 版を作成する処理を呼ぶ
+        # self.db.create_revision(...)
+
+        messagebox.showinfo("完了", "修正版を作成しました")
+        self._load_list()
+
+
 
 
     # --------------------------------------------------

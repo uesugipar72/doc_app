@@ -10,4 +10,7 @@ __pycache__/
 *.pdf
 # Visual Studio
 .vs/
+*.slnx/
+doc_app.slnx/
+
 
