@@ -75,18 +75,26 @@ class DocumentAllListGUI(tk.Tk):
         # --- 検索ボタン ---
         tk.Button(cond_frame, text="再表示", command=self._load_list)\
             .grid(row=1, column=5, padx=10)
-                # ===== 一覧 =====
+
+
+        # ===== 一覧 =====
         list_frame = tk.Frame(self)
         list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         columns = ("文書番号", "文書名", "版", "発行日", "状態", "PDFパス")
 
+        # ★ スクロールバー作成
+        ysb = ttk.Scrollbar(list_frame, orient="vertical")
+
         self.tree = ttk.Treeview(
             list_frame,
             columns=columns,
             show="headings",
-            height=20
+            height=20,
+            yscrollcommand=ysb.set
         )
+        ysb.config(command=self.tree.yview)
+
 
         widths = {
             "文書番号": 180,
@@ -104,7 +112,8 @@ class DocumentAllListGUI(tk.Tk):
         # PDFパスは非表示
         self.tree.column("PDFパス", width=0, stretch=False)
 
-        self.tree.pack(fill=tk.BOTH, expand=True)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        ysb.pack(side=tk.RIGHT, fill=tk.Y)
 
         # 行色
         self.tree.tag_configure("latest", background="#E8F5E9")   # 薄緑
