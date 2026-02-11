@@ -22,9 +22,9 @@ class DocumentInfo:
     DRAFT = 1
     ARCHIVED = 9
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path, base_dir):
         self.db_path = db_path
-
+        self.base_dir = base_dir
         
     # -------------------------------
     # ステータス → 表示文字列
@@ -92,53 +92,46 @@ class DocumentInfo:
         with self._connect() as conn:
             return conn.execute(sql, params).fetchall()
 
+        def create_new_document(self, doc_no, doc_name, doc_type, source_file):
 
-    # ------------------------------------------------------------------
-    # 最新版ドキュメント一覧（JOIN / 保証版）
-    # ------------------------------------------------------------------
-    def fetch_latest_documents(self) -> List[Tuple]:
-        """
-        最新版（edition_status = 0）のみ取得
-        """
-        sql = """
-            SELECT
-                d.document_number,   -- 0
-                d.document_name,     -- 1
-                e.edition_no,        -- 2
-                e.effective_date,    -- 3
-                e.edition_status,    -- 4
-                e.pdf_path,          -- 5
-                e.document_id        -- 6 
-            FROM Document_Edition_Master AS e
-            JOIN document_master AS d
-                ON e.document_id = d.document_id
-            WHERE e.edition_status = ?
-            ORDER BY d.document_number, e.edition_no
-        """
-        with self._connect() as conn:
-            return conn.execute(sql, (self.LATEST,)).fetchall()
+            today = datetime.date.today().isoformat()
 
-    # ------------------------------------------------------------------
-    # Edition 状態別一覧（修正中・旧版など）
-    # ------------------------------------------------------------------
-    def fetch_editions_by_status(self, edition_status: int) -> List[Tuple]:
-        sql = """
-        SELECT
-            d.document_number,   -- 0
-            d.document_name,     -- 1
-            e.edition_no,        -- 2
-            e.effective_date,    -- 3
-            e.edition_status,    -- 4
-            e.pdf_path,          -- 5
-            e.document_id        -- 6 
-        FROM Document_Edition_Master AS e
-        JOIN Document_Master AS d
-            ON e.document_id = d.document_id
-        WHERE e.edition_status = ?
-        ORDER BY d.document_number, e.edition_no
-        """
-        with self._connect() as conn:
-            return conn.execute(sql, (edition_status,)).fetchall()
+            # 管理フォルダ作成
+            doc_folder = os.path.join(self.base_dir, doc_no)
+            os.makedirs(doc_folder, exist_ok=True)
+
+            # 拡張子取得
+            ext = os.path.splitext(source_file)[1]
+
+            # 保存ファイル名
+            new_filename = f"{doc_no}_v1{ext}"
+            dest_path = os.path.join(doc_folder, new_filename)
+
+            # コピー
+            shutil.copy2(source_file, dest_path)
+
+            # DB登録
+            with self._connect() as conn:
+                cur = conn.cursor()
+
+                # Document_Master 登録
+                cur.execute("""
+                    INSERT INTO Document_Master (document_number, document_name, document_type)
+                    VALUES (?, ?, ?)
+                """, (doc_no, doc_name, doc_type))
+
+                document_id = cur.lastrowid
+
+                # Edition 登録（版1 修正中）
+                cur.execute("""
+                    INSERT INTO Document_Edition_Master
+                    (document_id, edition_no, effective_date, edition_status, pdf_path)
+                    VALUES (?, 1, ?, 1, ?)
+                """, (document_id, today, dest_path))
+
+                conn.commit()
+
+    
         
     # ------------------------------------------------------------------
     # 文書単位：Edition 履歴取得
