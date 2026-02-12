@@ -202,6 +202,36 @@ class DocumentInfo:
                     self.DRAFT
                 )
             )
+    def create_new_document(self, document_number, document_name, doc_type, pdf_path):
+
+        today = datetime.date.today().isoformat()
+
+        with self._connect() as conn:
+
+            # 1️⃣ Document_Master 登録
+            cur = conn.execute("""
+                INSERT INTO Document_Master
+                (document_number, document_name, document_type)
+                VALUES (?, ?, ?)
+            """, (document_number, document_name, doc_type))
+
+            document_id = cur.lastrowid
+
+            # 2️⃣ Edition 1 を修正中で登録
+            conn.execute("""
+                INSERT INTO Document_Edition_Master
+                (document_id, edition_no, effective_date, edition_status, pdf_path)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                document_id,
+                1,          # 初版
+                today,
+                1,          # 修正中
+                pdf_path
+            ))
+
+            conn.commit()
+
 
     # ------------------------------------------------------------------
     # 文書マスタ取得（参照用）
@@ -279,6 +309,30 @@ class DocumentInfo:
                 new_path,
                 datetime.datetime.now()
             ))
+
+    def get_next_document_number(self, category, department):
+
+        prefix = f"{category}-{department}-"
+
+        sql = """
+            SELECT document_number
+            FROM Document_Master
+            WHERE document_number LIKE ?
+            ORDER BY document_number DESC
+            LIMIT 1
+        """
+
+        with self._connect() as conn:
+            row = conn.execute(sql, (prefix + "%",)).fetchone()
+
+        if not row:
+            return 1
+
+        last_number = row["document_number"]
+        last_seq = int(last_number.split("-")[-1])
+
+        return last_seq + 1
+
 
     # ------------------------------------------------------------------
     # DB 接続（共通）

@@ -4,6 +4,7 @@ from document_info import DocumentInfo
 import os
 import subprocess
 from tkinter import messagebox
+from tkinter import filedialog
 import datetime
 
 class DocumentAllListGUI(tk.Tk):
@@ -308,18 +309,46 @@ class NewDocumentDialog(tk.Toplevel):
         frame = tk.Frame(self)
         frame.pack(padx=20, pady=20, fill=tk.BOTH, expand=True)
 
-        # 文書番号
-        tk.Label(frame, text="文書番号").grid(row=0, column=0, sticky="e", pady=5)
-        self.doc_no_entry = tk.Entry(frame, width=30)
-        self.doc_no_entry.grid(row=0, column=1, pady=5)
+        # ===== 文書区分 =====
+        tk.Label(frame, text="文書区分").grid(row=0, column=0, sticky="e", pady=5)
+        self.category_combo = ttk.Combobox(
+            frame,
+            values=["RE", "CO", "EM", "EX"],
+            state="readonly",
+            width=27
+        )
+        self.category_combo.grid(row=0, column=1, pady=5)
+        self.category_combo.bind("<<ComboboxSelected>>", self._update_doc_no)
 
-        # 文書名
-        tk.Label(frame, text="文書名").grid(row=1, column=0, sticky="e", pady=5)
+        # ===== 部門 =====
+        tk.Label(frame, text="部門").grid(row=1, column=0, sticky="e", pady=5)
+        self.department_combo = ttk.Combobox(
+            frame,
+            values=["病理", "生理", "検体", "細菌"],
+            state="readonly",
+            width=27
+        )
+        self.department_combo.grid(row=1, column=1, pady=5)
+        self.department_combo.bind("<<ComboboxSelected>>", self._update_doc_no)
+
+        # ===== 文書番号（自動生成）=====
+        tk.Label(frame, text="文書番号").grid(row=2, column=0, sticky="e", pady=5)
+        self.doc_no_var = tk.StringVar()
+        self.doc_no_entry = tk.Entry(
+            frame,
+            textvariable=self.doc_no_var,
+            state="readonly",
+            width=30
+        )
+        self.doc_no_entry.grid(row=2, column=1, pady=5)
+
+        # ===== 文書名 =====
+        tk.Label(frame, text="文書名").grid(row=3, column=0, sticky="e", pady=5)
         self.doc_name_entry = tk.Entry(frame, width=30)
-        self.doc_name_entry.grid(row=1, column=1, pady=5)
+        self.doc_name_entry.grid(row=3, column=1, pady=5)
 
-        # 文書種別
-        tk.Label(frame, text="文書種別").grid(row=2, column=0, sticky="e", pady=5)
+        # ===== 文書種別 =====
+        tk.Label(frame, text="ファイル種別").grid(row=4, column=0, sticky="e", pady=5)
         self.type_combo = ttk.Combobox(
             frame,
             values=["Word", "Excel", "PowerPoint"],
@@ -327,16 +356,33 @@ class NewDocumentDialog(tk.Toplevel):
             width=27
         )
         self.type_combo.set("Word")
-        self.type_combo.grid(row=2, column=1, pady=5)
+        self.type_combo.grid(row=4, column=1, pady=5)
 
-        # ボタン
+        # ===== ボタン =====
         btn_frame = tk.Frame(frame)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=20)
+        btn_frame.grid(row=5, column=0, columnspan=2, pady=20)
 
-        tk.Button(btn_frame, text="登録", width=10, command=self._register_document)\
-            .pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="キャンセル", width=10, command=self.destroy)\
-            .pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="登録", width=10,
+                    command=self._register_document).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="キャンセル", width=10,
+                    command=self.destroy).pack(side=tk.LEFT, padx=5)
+
+    def _update_doc_no(self, event=None):
+
+        category = self.category_combo.get()
+        department = self.department_combo.get()
+
+        if not category or not department:
+            return
+
+        # DBから最大番号取得
+        next_no = self.db.get_next_document_number(category, department)
+
+        doc_no = f"{category}-{department}-{next_no:04d}"
+
+        self.doc_no_var.set(doc_no)
+
+
 
     def _register_document(self,event=None):
         doc_no = self.doc_no_entry.get().strip()
@@ -347,18 +393,41 @@ class NewDocumentDialog(tk.Toplevel):
             messagebox.showwarning("入力エラー", "文書番号と文書名は必須です")
             return
 
+        # ===== ファイル選択 =====
+        source_path = filedialog.askopenfilename(
+            title="登録するファイルを選択",
+            initialdir=os.path.expanduser("~/Documents"),
+            filetypes=[
+                ("Word", "*.docx"),
+                ("Excel", "*.xlsx"),
+                ("PowerPoint", "*.pptx"),
+                ("すべてのファイル", "*.*")
+            ]
+        )
+
+        if not source_path:
+            return
+
         try:
-            self.db.create_new_document(
+            # DB登録＆コピー
+            saved_path = self.db.create_new_document(
                 doc_no,
                 doc_name,
-                doc_type
+                doc_type,
+                source_path
             )
         except Exception as e:
             messagebox.showerror("エラー", str(e))
             return
 
         messagebox.showinfo("完了", "新規文書を登録しました")
+
+        # 一覧更新
         self.refresh_callback()
+
+        # ★ 登録した文書を自動で開く
+        os.startfile(saved_path)
+
         self.destroy()
 
 
